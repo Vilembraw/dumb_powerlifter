@@ -3,6 +3,7 @@ import csv
 from datetime import datetime
 from typing import Literal, Dict, Any, List
 from pydantic import BaseModel, Field, ValidationError
+from rag import search_knowledge
 
 class Calc1RMArgs(BaseModel):
     weight: float = Field(..., description="Weight in kg or lbs")
@@ -14,6 +15,36 @@ class Calc1RMArgs(BaseModel):
 class LogWorkoutArgs(BaseModel):
     exercises: List[Dict[str, Any]] = Field(..., description="List of exercises. Each must contain: exercise, weight, reps.")
 
+class KBLookupArgs(BaseModel):
+    query: str = Field(..., description="Topic or question to search in Knowledge Base (e.g. 'squat rules', 'what is RPE')")
+    top_k: int = Field(default=3, ge=1, le=10, description="Number of top results to retrieve from KB")
+
+def _kb_lookup(args: KBLookupArgs) -> Dict[str, Any]:
+    """Retrieves information from the Knowledge Base."""
+    # Search the knowledge base
+    hits = search_knowledge(args.query, top_k=args.top_k)
+    # Check if any relevant hits were found
+    if not hits or hits[0].get("score", 0) < 0.3:
+        return {
+            "status": "no_results",
+            "message": "I couldn't find relevant information in the knowledge base.",
+            "hits": []
+        }
+
+    # Format context from hits
+    context_parts = []
+    for i, hit in enumerate(hits, 1):
+        context_parts.append(
+            f"[{i}] (Page {hit['page']}, Score: {hit['score']:. 2f})\n{hit['text']}"
+        )
+
+    context = "\n\n".join(context_parts)
+    return {
+        "status": "success",
+        "context": context,
+        "hits": hits,
+        "message": f"Found {len(hits)} relevant passages."
+    }
 
 def _calculate_1rm(args: Calc1RMArgs) -> Dict[str, Any]:
     """Calculates 1RM (Epley Formula) or suggests weight for reps."""
@@ -80,6 +111,7 @@ def _log_workout(args: LogWorkoutArgs) -> Dict[str, Any]:
 ALLOWED_TOOLS = {
     "calculate_1rm": (Calc1RMArgs, _calculate_1rm),
     "log_workout": (LogWorkoutArgs, _log_workout),
+    "kb_lookup": (KBLookupArgs, _kb_lookup),
 }
 
 """Dispatcher"""

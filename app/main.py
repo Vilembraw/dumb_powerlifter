@@ -6,6 +6,7 @@ from google import genai
 from google.genai import types
 from pydantic import BaseModel
 
+from app.rag import init_rag
 from tools import run_tool, ALLOWED_TOOLS
 load_dotenv()
 
@@ -26,10 +27,13 @@ AVAILABLE TOOLS:
    Args: {"weight": float, "reps": int, "mode": "calculate_max" | "calculate_reps_weight"}
 2. 'log_workout': Log a workout to CSV.
    Args: {"exercises": [{"exercise": str, "weight": float, "reps": int}]}
+3. 'kb_lookup': Search for rules, definitions, technique tips, or RPE explanation.
+   Args: {"query": str}
 
 INSTRUCTIONS:
 - If the user asks for a calculation or logging, RETURN A JSON OBJECT with the tool name and arguments.
 - If no tool is needed (general chat), return a JSON with "tool": "chat" and "response": "your message".
+- If user asks about RULES, TECHNIQUE, DEFINITIONS (e.g., "squat depth", "what is RPE") -> use 'kb_lookup'.
 - STRICTLY output JSON. No markdown code blocks.
 
 FORMAT:
@@ -60,6 +64,9 @@ def ask_gemini_router(user_input: str):
 
 
 def main():
+    pdf_path = os.getenv("KNOWLEDGE_PDF", "data/poliquin_picp.pdf")
+    init_rag(pdf_path)
+
     print(f"--- AI Powerlifting Coach ({MODEL_NAME}) ---")
     print("Type 'exit' to quit.\n")
 
