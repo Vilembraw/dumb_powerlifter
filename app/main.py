@@ -2,21 +2,19 @@ import os
 import json
 import time
 from dotenv import load_dotenv
-from google import genai
-from google.genai import types
-from pydantic import BaseModel
+from groq import Groq
 
 from app.rag import init_rag
-from tools import run_tool, ALLOWED_TOOLS
+from app.tools import run_tool, ALLOWED_TOOLS
 load_dotenv()
 
-API_KEY = os.getenv("GOOGLE_API_KEY")
-MODEL_NAME = os.getenv("GEMINI_MODEL_NAME", "gemini-2.0-flash")
+API_KEY = os.getenv("GROQ_API_KEY")
+MODEL_NAME = os.getenv("GROQ_MODEL_NAME", "llama-3.3-70b-versatile")
 
 if not API_KEY:
     raise ValueError("Missing GOOGLE_API_KEY in .env file!")
 
-client = genai.Client(api_key=API_KEY)
+client = Groq(api_key=API_KEY)
 
 SYSTEM_PROMPT = """
 You are an expert AI Powerlifting Coach.
@@ -42,29 +40,29 @@ OR
 {"tool": "chat", "response": "..."}
 """
 
-def ask_gemini_router(user_input: str):
+def ask_gemini_groq(user_input: str):
     """
-    Sends the user input to Gemini and forces a JSON response.
+    Sends the user input to groq and forces a JSON response.
     This implements the 'Router'
     """
     try:
-        response = client.models.generate_content(
+        response = client.chat.completions.create(
             model=MODEL_NAME,
-            contents=user_input,
-            config=types.GenerateContentConfig(
-                system_instruction=SYSTEM_PROMPT,
-                temperature=0.0, # Deterministic for tools
-                response_mime_type="application/json" # JSON Enforcement
-            )
+            messages=[
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": user_input}
+            ],
+            temperature=0.0,
+            response_format={"type": "json_object"}
         )
-        return json.loads(response.text)
+        return json.loads(response.choices[0].message.content)
     except Exception as e:
         print(f"LLM Error: {e}")
         return {"tool": "error", "response": "I couldn't process that request."}
 
 
 def main():
-    pdf_path = os.getenv("KNOWLEDGE_PDF", "data/poliquin_picp.pdf")
+    pdf_path = os.getenv("KNOWLEDGE_PDF", "data/poliquin_picp_level_1.pdf")
     init_rag(pdf_path)
 
     print(f"--- AI Powerlifting Coach ({MODEL_NAME}) ---")
@@ -76,7 +74,7 @@ def main():
             break
 
         # A. ROUTING (LLM Decision)
-        decision = ask_gemini_router(user_input)
+        decision = ask_gemini_groq(user_input)
 
         tool_name = decision.get("tool")
 
@@ -86,16 +84,34 @@ def main():
 
             tool_result = run_tool(tool_name, decision.get("args"))
 
-            # C. FINAL RESPONSE (Synthesis)
-            # We feed the tool result back to the LLM to generate a natural answer
-            final_prompt = f"User asked: {user_input}\nTool Result: {json.dumps(tool_result)}\nExplain this result to the user naturally."
+            if tool_name == "kb_lookup" and tool_result.get("status") == "success":
+                # Use the enhanced RAG prompt directly
+                enhanced_prompt = tool_result.get("prompt")
 
-            final_resp = client.models.generate_content(
-                model=MODEL_NAME,
-                contents=final_prompt,
-                config=types.GenerateContentConfig(temperature=0.3)
-            )
-            print(f"Coach: {final_resp.text}\n")
+                final_resp = client.chat.completions.create(  # Changed here
+                    model=MODEL_NAME,
+                    messages=[{"role": "user", "content": enhanced_prompt}],
+                    temperature=0.3,
+                    max_tokens=1024
+                )
+
+                print(f"\nCoach: {final_resp.choices[0].message.content}\n")
+
+                print(f"Sources:  {len(tool_result['hits'])} passages from knowledge base")
+                for i, hit in enumerate(tool_result['hits'], 1):
+                    print(f"[{i}] Page {hit['page']} (Score: {hit['score']:.2f})")
+                print()
+            else:
+                #C. Standard synthesis for other tools
+                final_prompt = f"User asked:  {user_input}\nTool Result: {json.dumps(tool_result)}\nExplain this result to the user naturally."
+
+                final_resp = client.chat.completions.create(  # Changed here
+                    model=MODEL_NAME,
+                    messages=[{"role": "user", "content": final_prompt}],
+                    temperature=0.3
+                )
+                print(f"\nCoach: {final_resp.choices[0].message.content}\n")
+
 
             # D. OBSERVABILITY
             # TODO: Logs to csv or monitoring system can be added here

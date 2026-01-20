@@ -47,7 +47,7 @@ def build_knowledge_base(pdf_path: str, force_rebuild=False):
     )
 
     # Build FAISS index
-    index = faiss.IndexFlatL2(dimension)
+    index = faiss.IndexFlatIP(dimension)
     faiss.normalize_L2(embeddings)
     index.add(embeddings.astype('float32'))
 

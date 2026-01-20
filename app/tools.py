@@ -3,7 +3,7 @@ import csv
 from datetime import datetime
 from typing import Literal, Dict, Any, List
 from pydantic import BaseModel, Field, ValidationError
-from rag import search_knowledge
+from app.rag import search_knowledge
 
 class Calc1RMArgs(BaseModel):
     weight: float = Field(..., description="Weight in kg or lbs")
@@ -24,27 +24,70 @@ def _kb_lookup(args: KBLookupArgs) -> Dict[str, Any]:
     # Search the knowledge base
     hits = search_knowledge(args.query, top_k=args.top_k)
     # Check if any relevant hits were found
-    if not hits or hits[0].get("score", 0) < 0.3:
+
+    if hits:
+        print(f"Top hit score: {hits[0].get('score', 'N/A')}")
+        print(f"Top hit preview: {hits[0].get('text', '')[:100]}...")
+    else:
+        print("No hits returned from search_knowledge()")
+
+    if not hits:
         return {
             "status": "no_results",
-            "message": "I couldn't find relevant information in the knowledge base.",
+            "message":  "I couldn't find any results in the knowledge base.",
             "hits": []
         }
+
+    # if not hits or hits[0].get("score", 0) < 0.3:
+    #     return {
+    #         "status": "no_results",
+    #         "message": "I couldn't find relevant information in the knowledge base.",
+    #         "hits": []
+    #     }
 
     # Format context from hits
     context_parts = []
     for i, hit in enumerate(hits, 1):
         context_parts.append(
-            f"[{i}] (Page {hit['page']}, Score: {hit['score']:. 2f})\n{hit['text']}"
+            f"[{i}] (Page {hit['page']}, Score: {hit['score']:.2f})\n{hit['text']}"
         )
 
     context = "\n\n".join(context_parts)
+
+    rag_prompt = f"""You are an expert AI Powerlifting Coach with deep knowledge of training principles, technique, and competition rules. 
+
+    USER QUESTION: {args.query}
+
+    RETRIEVED KNOWLEDGE BASE CONTEXT:
+    {context}
+
+    INSTRUCTIONS:
+    1. Carefully analyze the retrieved context above
+    2. Answer the user's question directly and comprehensively
+    3. Use specific details, numbers, and rules from the context
+    4. If multiple sources provide information, synthesize them coherently
+    5. Cite the source page numbers when providing specific facts or rules
+    6. If the context doesn't fully answer the question, acknowledge what's missing
+    7. Use clear, actionable language appropriate for a powerlifting athlete
+    8. Structure your response with bullet points or numbered lists when appropriate
+
+    IMPORTANT: 
+    - Stay strictly within the knowledge provided in the context
+    - Do not make up information not present in the sources
+    - If information is partial or unclear, say so
+    - Use technical terminology accurately
+
+    ANSWER: """
+
     return {
         "status": "success",
         "context": context,
         "hits": hits,
-        "message": f"Found {len(hits)} relevant passages."
+        "message": f"Found {len(hits)} relevant passages from the knowledge base.",
+        "prompt": rag_prompt,
+        "query": args.query
     }
+
 
 def _calculate_1rm(args: Calc1RMArgs) -> Dict[str, Any]:
     """Calculates 1RM (Epley Formula) or suggests weight for reps."""
