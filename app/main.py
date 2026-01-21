@@ -40,7 +40,7 @@ OR
 {"tool": "chat", "response": "..."}
 """
 
-def ask_gemini_groq(user_input: str):
+def ask_groq_router(user_input: str):
     """
     Sends the user input to groq and forces a JSON response.
     This implements the 'Router'
@@ -74,7 +74,7 @@ def main():
             break
 
         # A. ROUTING (LLM Decision)
-        decision = ask_gemini_groq(user_input)
+        decision = ask_groq_router(user_input)
 
         tool_name = decision.get("tool")
 
@@ -82,11 +82,28 @@ def main():
         if tool_name in ALLOWED_TOOLS:
             print(f" > [DEBUG] Calling Tool: {tool_name} with {decision.get('args')}")
 
-            tool_result = run_tool(tool_name, decision.get("args"))
+            tool_result = run_tool(tool_name, decision.get("args"), timeout_s=5.0)
 
-            if tool_name == "kb_lookup" and tool_result.get("status") == "success":
+            if tool_result.get("status") == "error":
+                error_type = tool_result.get("error_type", "unknown")
+                message = tool_result.get("message", "Unknown error")
+
+                if error_type == "timeout":
+                    print(f"\nCoach: Sorry, the tool '{tool_name}' took too long to respond.\n")
+                elif error_type == "security_blocked":
+                    print(f"\nCoach: {message}\n")
+                elif error_type == "validation_error":
+                    print(f"\nCoach: Invalid input:  {message}\n")
+                    print(f"Details: {tool_result.get('details', 'N/A')}\n")
+                else:
+                    print(f"\nCoach: Something went wrong: {message}\n")
+                continue
+
+            actual_result = tool_result.get("result", {})
+
+            if tool_name == "kb_lookup" and actual_result.get("status") == "success":
                 # Use the enhanced RAG prompt directly
-                enhanced_prompt = tool_result.get("prompt")
+                enhanced_prompt = actual_result.get("prompt")
 
                 final_resp = client.chat.completions.create(  # Changed here
                     model=MODEL_NAME,
@@ -97,13 +114,13 @@ def main():
 
                 print(f"\nCoach: {final_resp.choices[0].message.content}\n")
 
-                print(f"Sources:  {len(tool_result['hits'])} passages from knowledge base")
-                for i, hit in enumerate(tool_result['hits'], 1):
+                print(f"Sources:  {len(actual_result['hits'])} passages from knowledge base")
+                for i, hit in enumerate(actual_result['hits'], 1):
                     print(f"[{i}] Page {hit['page']} (Score: {hit['score']:.2f})")
                 print()
             else:
                 #C. Standard synthesis for other tools
-                final_prompt = f"User asked:  {user_input}\nTool Result: {json.dumps(tool_result)}\nExplain this result to the user naturally."
+                final_prompt = f"User asked:  {user_input}\nTool Result: {json.dumps(actual_result)}\nExplain this result to the user naturally."
 
                 final_resp = client.chat.completions.create(  # Changed here
                     model=MODEL_NAME,

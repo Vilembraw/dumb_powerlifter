@@ -1,13 +1,16 @@
 import os
 import csv
+import threading
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout
 from datetime import datetime
-from typing import Literal, Dict, Any, List
+from typing import Literal, Dict, Any, List, Optional
 from pydantic import BaseModel, Field, ValidationError
 from app.rag import search_knowledge
 
+
 class Calc1RMArgs(BaseModel):
-    weight: float = Field(..., description="Weight in kg or lbs")
-    reps: int = Field(..., gt=0, description="Number of repetitions (must be > 0)")
+    weight: float = Field(...,gt=0, le=500, description="Weight in kg or lbs")
+    reps: int = Field(..., gt=0, le=100, description="Number of repetitions (must be > 0)")
     mode: Literal["calculate_max", "calculate_reps_weight"] = Field(
         ..., description="'calculate_max' computes 1RM. 'calculate_reps_weight' computes weight for reps."
     )
@@ -19,12 +22,28 @@ class KBLookupArgs(BaseModel):
     query: str = Field(..., description="Topic or question to search in Knowledge Base (e.g. 'squat rules', 'what is RPE')")
     top_k: int = Field(default=3, ge=1, le=10, description="Number of top results to retrieve from KB")
 
-def _kb_lookup(args: KBLookupArgs) -> Dict[str, Any]:
+TOOL_TIMEOUTS = {
+    "calculate_1rm": 2.0,
+    "log_workout": 3.0,
+    "kb_lookup": 15.0,
+}
+DEFAULT_TIMEOUT = 5.0
+
+def _kb_lookup(args: KBLookupArgs, cancel_event: Optional[threading. Event] = None) -> Dict[str, Any]:
     """Retrieves information from the Knowledge Base."""
+
+    # Check for cancellation before search
+    if cancel_event and cancel_event.is_set():
+        raise RuntimeError("Operation cancelled")
+
     # Search the knowledge base
     hits = search_knowledge(args.query, top_k=args.top_k)
-    # Check if any relevant hits were found
 
+    # Check for cancellation after search
+    if cancel_event and cancel_event.is_set():
+        raise RuntimeError("Operation cancelled")
+
+    # Check if any relevant hits were found
     if hits:
         print(f"Top hit score: {hits[0].get('score', 'N/A')}")
         print(f"Top hit preview: {hits[0].get('text', '')[:100]}...")
@@ -38,16 +57,20 @@ def _kb_lookup(args: KBLookupArgs) -> Dict[str, Any]:
             "hits": []
         }
 
-    # if not hits or hits[0].get("score", 0) < 0.3:
-    #     return {
-    #         "status": "no_results",
-    #         "message": "I couldn't find relevant information in the knowledge base.",
-    #         "hits": []
-    #     }
+    if not hits or hits[0].get("score", 0) < 0.5:
+        return {
+            "status": "no_results",
+            "message": "I couldn't find relevant information in the knowledge base.",
+            "hits": []
+        }
 
     # Format context from hits
     context_parts = []
     for i, hit in enumerate(hits, 1):
+        # Check for cancellation during context assembly
+        if cancel_event and cancel_event.is_set():
+            raise RuntimeError("Operation cancelled")
+
         context_parts.append(
             f"[{i}] (Page {hit['page']}, Score: {hit['score']:.2f})\n{hit['text']}"
         )
@@ -89,7 +112,7 @@ def _kb_lookup(args: KBLookupArgs) -> Dict[str, Any]:
     }
 
 
-def _calculate_1rm(args: Calc1RMArgs) -> Dict[str, Any]:
+def _calculate_1rm(args: Calc1RMArgs, cancel_event: Optional[threading. Event] = None) -> Dict[str, Any]:
     """Calculates 1RM (Epley Formula) or suggests weight for reps."""
     if args.mode == "calculate_max":
         # Epley Formula: w * (1 + r/30)
@@ -108,7 +131,7 @@ def _calculate_1rm(args: Calc1RMArgs) -> Dict[str, Any]:
         }
 
 
-def _log_workout(args: LogWorkoutArgs) -> Dict[str, Any]:
+def _log_workout(args: LogWorkoutArgs, cancel_event: Optional[threading. Event] = None) -> Dict[str, Any]:
     """Logs the workout to CSV."""
     filename = "user_progress.csv"
     saved_entries = []
@@ -126,6 +149,11 @@ def _log_workout(args: LogWorkoutArgs) -> Dict[str, Any]:
             timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
             for item in args.exercises:
+
+                if cancel_event and cancel_event.is_set():
+                    os.remove(filename)
+                    raise RuntimeError("Operation cancelled")
+
                 w = float(item.get("weight", 0))
                 r = int(item.get("reps", 0))
                 ex = item.get("exercise", "Unknown")
@@ -143,6 +171,8 @@ def _log_workout(args: LogWorkoutArgs) -> Dict[str, Any]:
                 saved_entries.append(f"{ex} {w}x{r}")
 
     except Exception as e:
+        if os.path.exists(filename):
+            os.remove(filename)
         return {"status": "error", "msg": str(e)}
 
     return {
@@ -157,20 +187,86 @@ ALLOWED_TOOLS = {
     "kb_lookup": (KBLookupArgs, _kb_lookup),
 }
 
-"""Dispatcher"""
-def run_tool(tool_name: str, tool_args: Dict[str, Any]) -> Dict[str, Any]:
-    if tool_name not in ALLOWED_TOOLS:
-        return {"error": f"Tool '{tool_name}' not allowed."}
 
+_cancellation_tokens: Dict[int, threading.Event] = {}
+
+"""Dispatcher Helper for Synchronous Calls"""
+def _run_tool_sync(tool_name: str, validated_args, cancel_event: threading.Event) -> Dict[str, Any]:
+    Schema, Function = ALLOWED_TOOLS[tool_name]
+    # Setup cancellation event
+    if hasattr(Function, '__wrapped__'):
+        return Function(validated_args, cancel_event=cancel_event)
+    else:
+        return Function(validated_args)
+
+"""Dispatcher"""
+def run_tool(tool_name: str, tool_args: Dict[str, Any], timeout_s: float = 5.0) -> Dict[str, Any]:
+    if tool_name not in ALLOWED_TOOLS:
+        return {
+            "status": "error",
+            "error_type": "security_blocked",
+            "message": f"Tool '{tool_name}' not allowed."
+        }
+
+    if timeout_s is None:
+        timeout_s = TOOL_TIMEOUTS.get(tool_name, DEFAULT_TIMEOUT)
     Schema, Function = ALLOWED_TOOLS[tool_name]
 
+    # Validation
     try:
-        # Pydantic Validation
         validated_args = Schema(**tool_args)
-        # Execution
-        return Function(validated_args)
     except ValidationError as e:
         # Handling validation errors cleanly
-        return {"error": "Validation Error", "details": str(e)}
-    except Exception as e:
-        return {"error": "Execution Error", "details": str(e)}
+        return {
+            "status": "error",
+            "error_type": "validation_error",
+            "message": "Invalid arguments",
+            "details": e.errors()
+        }
+
+    cancel_event = threading.Event()
+    thread_id = threading.get_ident()
+    _cancellation_tokens[thread_id] = cancel_event
+
+    # Execute with timeout
+    try:
+        with ThreadPoolExecutor(max_workers=1) as executor:
+                future = executor.submit(_run_tool_sync, tool_name, validated_args, cancel_event)
+                try:
+                    result = future.result(timeout=timeout_s)
+
+                    return {
+                        "status": "success",
+                        "result": result
+                    }
+
+                # Handle timeout
+                except FuturesTimeout:
+                    cancel_event.set()
+
+                    try:
+                        result = future.result(timeout=1.0)  # Grace period 1s
+                        print(f"[TIMEOUT] {tool_name} completed during grace period")
+                        return {
+                            "status": "success",
+                            "result": result
+                        }
+                    except FuturesTimeout:
+                        print(f"[TIMEOUT] {tool_name} did not stop gracefully")
+
+                    return {
+                        "status": "error",
+                        "error_type": "timeout",
+                        "message": f"Tool '{tool_name}' exceeded {timeout_s}s timeout."
+                    }
+
+                except Exception as e:
+                    cancel_event.set()
+                    return {
+                        "status": "error",
+                        "error_type": "tool_error",
+                        "message": f"Tool '{tool_name}' failed",
+                        "details": str(e)
+                    }
+    finally:
+        _cancellation_tokens.pop(thread_id, None)
