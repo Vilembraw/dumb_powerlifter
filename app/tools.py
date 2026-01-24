@@ -37,7 +37,7 @@ def _kb_lookup(args: KBLookupArgs, cancel_event: Optional[threading. Event] = No
         raise RuntimeError("Operation cancelled")
 
     # Search the knowledge base
-    hits = search_knowledge(args.query, top_k=args.top_k)
+    hits = search_knowledge(args.query, top_k=args.top_k, use_hybrid=True)
 
     # Check for cancellation after search
     if cancel_event and cancel_event.is_set():
@@ -50,18 +50,28 @@ def _kb_lookup(args: KBLookupArgs, cancel_event: Optional[threading. Event] = No
     else:
         print("No hits returned from search_knowledge()")
 
-    if not hits:
-        return {
-            "status": "no_results",
-            "message":  "I couldn't find any results in the knowledge base.",
-            "hits": []
-        }
 
-    if not hits or hits[0].get("score", 0) < 0.5:
+    RELEVANCE_THRESHOLD = 0.4
+
+    if not hits or hits[0].get("score", 0) < RELEVANCE_THRESHOLD:
         return {
-            "status": "no_results",
-            "message": "I couldn't find relevant information in the knowledge base.",
-            "hits": []
+            "status": "success",
+            "prompt": (
+                f"The user asked: '{args.query}'.\n\n"
+                f"I searched the knowledge base but found no highly relevant information "
+                f"(best match score: {hits[0].get('score', 0):.2f} < {RELEVANCE_THRESHOLD}).\n\n"
+                f"INSTRUCTION: Answer this question using your **general expert knowledge** as an experienced Powerlifting Coach.\n\n"
+                f"CRITICAL RULES:\n"
+                f"1. START your response with: \"Note: This is based on general coaching knowledge, not the provided documents.\"\n"
+                f"2. Be helpful, detailed, and accurate\n"
+                f"3. Use proper powerlifting terminology\n"
+                f"4. Structure your answer with bullet points or numbered steps if explaining technique\n"
+                f"5. Cite general principles (e.g., 'According to standard powerlifting coaching...')\n\n"
+                f"USER QUESTION: {args.query}\n\n"
+                f"ANSWER:"
+            ),
+            "hits": [],
+            "query": args.query
         }
 
     # Format context from hits
@@ -71,8 +81,15 @@ def _kb_lookup(args: KBLookupArgs, cancel_event: Optional[threading. Event] = No
         if cancel_event and cancel_event.is_set():
             raise RuntimeError("Operation cancelled")
 
+        method = {
+            "dense": "Semantic",
+            "bm25": "Keyword",
+            "both": "Hybrid",
+            "unknown": "Unknown"
+        }.get(hit.get("retrieved_by", "unknown"), "Unknown")
+
         context_parts.append(
-            f"[{i}] (Page {hit['page']}, Score: {hit['score']:.2f})\n{hit['text']}"
+            f"[{i}] ({method} Search, Page {hit['page']}, Score: {hit['score']:.2f})\n{hit['text']}"
         )
 
     context = "\n\n".join(context_parts)
@@ -86,21 +103,21 @@ def _kb_lookup(args: KBLookupArgs, cancel_event: Optional[threading. Event] = No
 
     INSTRUCTIONS:
     1. Carefully analyze the retrieved context above
-    2. Answer the user's question directly and comprehensively
+    2. Answer the user's question directly and comprehensively using ONLY information from the context
     3. Use specific details, numbers, and rules from the context
-    4. If multiple sources provide information, synthesize them coherently
-    5. Cite the source page numbers when providing specific facts or rules
-    6. If the context doesn't fully answer the question, acknowledge what's missing
-    7. Use clear, actionable language appropriate for a powerlifting athlete
-    8. Structure your response with bullet points or numbered lists when appropriate
-
-    IMPORTANT: 
-    - Stay strictly within the knowledge provided in the context
-    - Do not make up information not present in the sources
-    - If information is partial or unclear, say so
-    - Use technical terminology accurately
-
-    ANSWER: """
+    4. Cite source page numbers when providing specific facts (e.g., "According to page 5...")
+    5. If the context doesn't fully answer the question, acknowledge: "The provided materials don't cover [specific aspect]"
+    6. Use clear, actionable language appropriate for a powerlifting athlete
+    7. Structure your response with bullet points or numbered lists when appropriate
+    8. Be concise - avoid repeating the same information
+    
+    CRITICAL GROUNDING RULES:
+    - Stay STRICTLY within the knowledge provided in the context
+    - Do NOT add information from general knowledge
+    - If information is partial or unclear, say so explicitly
+    - Use technical terminology accurately as presented in the sources
+    
+    ANSWER:"""
 
     return {
         "status": "success",
@@ -202,6 +219,9 @@ def _run_tool_sync(tool_name: str, validated_args, cancel_event: threading.Event
 
 def run_tool(tool_name: str, tool_args: Dict[str, Any], timeout_s: float = 5.0) -> Dict[str, Any]:
     """Runs a tool with validation, timeout, and cancellation support."""
+    if tool_args is None:
+        tool_args = {}
+
     if tool_name not in ALLOWED_TOOLS:
         return {
             "status": "error",

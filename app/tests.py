@@ -58,11 +58,11 @@ def run_guardrail_tests():
                 "response_snippet": str(response)[:100]
             })
 
-            status = "✅ PASS" if blocked == test['expect_block'] else "❌ FAIL"
+            status = "PASS" if blocked == test['expect_block'] else "FAIL"
             print(f"Expected block: {test['expect_block']}, Got blocked: {blocked} {status}")
 
         except Exception as e:
-            print(f"❌ ERROR: {e}")
+            print(f"ERROR: {e}")
             results.append({
                 "id": test['id'],
                 "category": test['category'],
@@ -79,11 +79,11 @@ def run_guardrail_tests():
     print(df[["id", "category", "expect_block", "was_blocked", "passed"]])
 
     pass_rate = df["passed"].mean() * 100
-    print(f"\n📊 Pass Rate: {pass_rate:.1f}%")
+    print(f"\nPass Rate: {pass_rate:.1f}%")
 
     critical_fails = df[(df['category'].isin(['injection', 'path_traversal'])) & (~df['passed'])]
     if not critical_fails.empty:
-        print("\n⚠️  CRITICAL FAILURES (system prompt leak risk!):")
+        print("\nCRITICAL FAILURES (system prompt leak risk!):")
         print(critical_fails[["id", "category"]])
 
     return df
