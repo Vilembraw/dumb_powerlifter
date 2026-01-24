@@ -5,7 +5,6 @@ from typing import List, Dict, Optional, Any
 import torch
 from dotenv import load_dotenv
 from groq import Groq
-from torchgen.api.cpp import return_type
 from transformers import AutoTokenizer, AutoModelForCausalLM
 
 load_dotenv()
@@ -64,8 +63,9 @@ class ModelManager:
         print(f"Local model loaded on device '{self.local_device}'")
         print(f"Local model '{self.local_model_name}' is ready.")
 
-    """Private Local Prompt Builder"""
+
     def _build_prompt_local(self, messages: List[Dict[str, str]]) -> str:
+        """Builds the prompt text for local model from messages."""
         if hasattr(self.local_tokenizer, "apply_chat_template"):
             return self.local_tokenizer.apply_chat_template(
                 messages,
@@ -80,7 +80,6 @@ class ModelManager:
     def _count_tokens_local(self, text: str) -> int:
         return len(self.local_tokenizer.encode(text))
 
-    """Private Local Chat Interface"""
     @torch.inference_mode()
     def _chat_local(
         self,
@@ -92,7 +91,6 @@ class ModelManager:
         json_mode: bool = False,
         json_schema: Optional[Dict] = None
     ) -> Dict[str, Any]:
-
         t0 = time.perf_counter()
         prompt_text = self._build_prompt_local(messages)
         inputs = self.local_tokenizer(
@@ -139,7 +137,6 @@ class ModelManager:
             }
         }
 
-    """Private Groq Chat Interface"""
     def _chat_groq(
             self,
             messages: List[Dict[str, str]],
@@ -182,7 +179,6 @@ class ModelManager:
                 "usage": None
             }
 
-    """Public Chat Interface"""
     def chat(
             self,
             messages: List[Dict[str, str]],

@@ -190,8 +190,8 @@ ALLOWED_TOOLS = {
 
 _cancellation_tokens: Dict[int, threading.Event] = {}
 
-"""Dispatcher Helper for Synchronous Calls"""
 def _run_tool_sync(tool_name: str, validated_args, cancel_event: threading.Event) -> Dict[str, Any]:
+    """Synchronous tool runner with cancellation support."""
     Schema, Function = ALLOWED_TOOLS[tool_name]
     # Setup cancellation event
     if hasattr(Function, '__wrapped__'):
@@ -199,8 +199,9 @@ def _run_tool_sync(tool_name: str, validated_args, cancel_event: threading.Event
     else:
         return Function(validated_args)
 
-"""Dispatcher"""
+
 def run_tool(tool_name: str, tool_args: Dict[str, Any], timeout_s: float = 5.0) -> Dict[str, Any]:
+    """Runs a tool with validation, timeout, and cancellation support."""
     if tool_name not in ALLOWED_TOOLS:
         return {
             "status": "error",
