@@ -1,10 +1,13 @@
 import os
 import csv
 import threading
+import time
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout
 from datetime import datetime
 from typing import Literal, Dict, Any, List, Optional
 from pydantic import BaseModel, Field, ValidationError
+
+from app.observability import log_tool_execution
 from app.rag import search_knowledge
 
 
@@ -51,7 +54,7 @@ def _kb_lookup(args: KBLookupArgs, cancel_event: Optional[threading. Event] = No
         print("No hits returned from search_knowledge()")
 
 
-    RELEVANCE_THRESHOLD = 0.4
+    RELEVANCE_THRESHOLD = 0.67
 
     if not hits or hits[0].get("score", 0) < RELEVANCE_THRESHOLD:
         return {
@@ -219,10 +222,17 @@ def _run_tool_sync(tool_name: str, validated_args, cancel_event: threading.Event
 
 def run_tool(tool_name: str, tool_args: Dict[str, Any], timeout_s: float = 5.0) -> Dict[str, Any]:
     """Runs a tool with validation, timeout, and cancellation support."""
+
+    start_time = time.perf_counter()
+    status_log = "ERROR"
+    error_type_log = "unknown"
+
     if tool_args is None:
         tool_args = {}
 
     if tool_name not in ALLOWED_TOOLS:
+        duration = time.perf_counter() - start_time
+        log_tool_execution(tool_name, "BLOCKED", duration, "security_blocked")
         return {
             "status": "error",
             "error_type": "security_blocked",
@@ -238,6 +248,8 @@ def run_tool(tool_name: str, tool_args: Dict[str, Any], timeout_s: float = 5.0) 
         validated_args = Schema(**tool_args)
     except ValidationError as e:
         # Handling validation errors cleanly
+        duration = time.perf_counter() - start_time
+        log_tool_execution(tool_name, "ERROR", duration, "validation_error")
         return {
             "status": "error",
             "error_type": "validation_error",
@@ -248,41 +260,33 @@ def run_tool(tool_name: str, tool_args: Dict[str, Any], timeout_s: float = 5.0) 
     cancel_event = threading.Event()
     thread_id = threading.get_ident()
     _cancellation_tokens[thread_id] = cancel_event
-
+    effective_timeout = timeout_s or TOOL_TIMEOUTS.get(tool_name, DEFAULT_TIMEOUT)
     # Execute with timeout
     try:
         with ThreadPoolExecutor(max_workers=1) as executor:
                 future = executor.submit(_run_tool_sync, tool_name, validated_args, cancel_event)
                 try:
-                    result = future.result(timeout=timeout_s)
-
-                    return {
-                        "status": "success",
-                        "result": result
-                    }
+                    result = future.result(timeout=effective_timeout)
+                    status_log = "SUCCESS"
+                    error_type_log = ""
+                    return {"status": "success", "result": result}
 
                 # Handle timeout
                 except FuturesTimeout:
                     cancel_event.set()
-
-                    try:
-                        result = future.result(timeout=1.0)  # Grace period 1s
-                        print(f"[TIMEOUT] {tool_name} completed during grace period")
-                        return {
-                            "status": "success",
-                            "result": result
-                        }
-                    except FuturesTimeout:
-                        print(f"[TIMEOUT] {tool_name} did not stop gracefully")
+                    status_log = "TIMEOUT"
+                    error_type_log = "timeout"
 
                     return {
                         "status": "error",
                         "error_type": "timeout",
-                        "message": f"Tool '{tool_name}' exceeded {timeout_s}s timeout."
+                        "message": f"Tool '{tool_name}' exceeded {effective_timeout}s timeout."
                     }
 
                 except Exception as e:
                     cancel_event.set()
+                    status_log = "ERROR"
+                    error_type_log = "tool_error"
                     return {
                         "status": "error",
                         "error_type": "tool_error",
@@ -291,3 +295,5 @@ def run_tool(tool_name: str, tool_args: Dict[str, Any], timeout_s: float = 5.0) 
                     }
     finally:
         _cancellation_tokens.pop(thread_id, None)
+        duration = time.perf_counter() - start_time
+        log_tool_execution(tool_name, status_log, duration, error_type_log)

@@ -1,4 +1,6 @@
 import os
+import time
+
 import uvicorn
 import json
 from typing import Optional, Literal
@@ -7,6 +9,7 @@ from pydantic import BaseModel, Field
 
 from app.model_manager import ModelManager
 from app.guardrails import check_guardrails, scrub_user_input
+from app.observability import get_metrics_report, log_tool_execution
 from app.rag import init_rag
 from app.tools import run_tool, ALLOWED_TOOLS
 from app.main import ask_model
@@ -28,10 +31,13 @@ async def startup_event():
     global model_manager
     print(">>> Init API...")
     model_manager = ModelManager()
-    pdf_path = os.getenv("KNOWLEDGE_PDF", "data/poliquin_picp_level_1.pdf")
+    pdf_path = os.getenv("KNOWLEDGE_PDF", "app/data/poliquin_picp_level_1.pdf")
     init_rag(pdf_path)
     print(">>> API ready.")
 
+@app.get("/metrics")
+async def metrics():
+    return get_metrics_report()
 
 @app.post("/ask")
 async def ask_endpoint(request: AskRequest):
@@ -42,12 +48,13 @@ async def ask_endpoint(request: AskRequest):
     should_block, reason, flags = check_guardrails(request.user_input)
 
     if should_block:
+        log_tool_execution("guardrails", "BLOCKED", 0.0, reason, 0)
         raise HTTPException(
             status_code=403,
             detail={
                 "error": "Security Block",
                 "message": reason,
-                "flags": flags
+                # "flags": flags
             }
         )
 
@@ -63,15 +70,24 @@ async def ask_endpoint(request: AskRequest):
             ],
             temperature=temperature
         )
+
+        usage = response.get("usage", {})
+        tokens = usage.get("total_tokens", 0)
+        log_tool_execution("llm_chat", "SUCCESS", response["latency_s"], "", tokens)
+
         return {
             "response": response["text"],
             "tool_used": None,
             "mode": request.mode
         }
 
-
-    decision = ask_model(model_manager, clean_input)
+    t0 = time.perf_counter()
+    decision, usage = ask_model(model_manager, clean_input)
     tool_name = decision.get("tool")
+    duration = time.perf_counter() - t0
+    tokens = usage.get("total_tokens", 0)
+
+    log_tool_execution("llm_plan", "SUCCESS", duration, "", tokens)
 
     if tool_name == "chat" or tool_name == "error":
         return {
@@ -81,7 +97,6 @@ async def ask_endpoint(request: AskRequest):
 
     if tool_name in ALLOWED_TOOLS:
         tool_args = decision.get("args", {})
-
 
         if tool_name == "kb_lookup":
             tool_args["top_k"] = request.k
@@ -93,12 +108,11 @@ async def ask_endpoint(request: AskRequest):
             return {
                 "response": f"Tool error: {tool_result.get('message')}",
                 "tool_used": tool_name,
-                "details": tool_result
+                "details": tool_result,
+                "error_type": tool_result.get("error_type", "unknown")
             }
 
         actual_result = tool_result.get("result", {})
-
-        final_text = ""
 
         if tool_name == "kb_lookup" and actual_result.get("status") == "success":
             enhanced_prompt = actual_result.get("prompt")
@@ -108,7 +122,6 @@ async def ask_endpoint(request: AskRequest):
                 temperature=temperature,
                 max_tokens=512
             )
-            final_text = final_resp["text"]
         else:
             final_prompt = (
                 f"User asked: {clean_input}\n"
@@ -120,8 +133,11 @@ async def ask_endpoint(request: AskRequest):
                 temperature=temperature,
                 max_tokens=512
             )
-            final_text = final_resp["text"]
 
+        final_text = final_resp["text"]
+        usage_final = final_resp.get("usage", {})
+        tokens_final = usage_final.get("total_tokens", 0)
+        log_tool_execution("llm_response", "SUCCESS", final_resp["latency_s"], "", tokens_final)
         return {
             "response": final_text,
             "tool_used": tool_name,

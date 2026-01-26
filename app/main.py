@@ -7,6 +7,7 @@ from groq import Groq
 
 from app.guardrails import check_guardrails, scrub_user_input
 from app.model_manager import ModelManager
+from app.observability import log_tool_execution
 from app.rag import init_rag
 from app.tools import run_tool, ALLOWED_TOOLS
 
@@ -61,16 +62,23 @@ def ask_secure(model: ModelManager, user_input: str):
     """ Applies guardrails before sending to the model."""
     should_block, reason, flags = check_guardrails(user_input)
     if should_block:
+        log_tool_execution("guardrails", "BLOCKED", 0.0, reason, 0)
         return {
             "tool": "error",
             "response": reason,
             "flags": flags
-        }
+        }, {}
 
     clean_input = scrub_user_input(user_input)
 
     return ask_model(model, clean_input)
 
+def _merge_usage(usage1: dict, usage2: dict) -> dict:
+    return {
+        "prompt_tokens": usage1.get("prompt_tokens", 0) + usage2.get("prompt_tokens", 0),
+        "completion_tokens": usage1.get("completion_tokens", 0) + usage2.get("completion_tokens", 0),
+        "total_tokens": usage1.get("total_tokens", 0) + usage2.get("total_tokens", 0)
+    }
 
 def try_parse(text):
     """Tries to parse JSON from text using multiple strategies."""
@@ -102,10 +110,10 @@ def ask_model(model: ModelManager, user_input: str):
             max_tokens=512
         )
 
-        raw_text = response["text"].strip()
-
+        raw_text = response.get("text").strip()
+        usage_init = response.get("usage", {})
         try:
-            return try_parse(raw_text)
+            return try_parse(raw_text), usage_init
         except json.JSONDecodeError:
             # Attempt to repair the JSON response
             repair_messages = [
@@ -121,28 +129,33 @@ def ask_model(model: ModelManager, user_input: str):
                 json_mode=True
             )
 
-            repair_text = repair_resp["text"].strip()
+            repair_text = repair_resp.get("text").strip()
+            repair_usage = repair_resp.get("usage", {})
+
+            total_usage = _merge_usage(usage_init, repair_usage)
 
             try:
-                return try_parse(repair_text)
+                return try_parse(repair_text), total_usage
             except json.JSONDecodeError:
                 print(f" > [ERROR] Repair failed. Fallback to chat.")
                 # Final Fallback: Treat the *original* text as a chat response
-                return {
+                fallback = {
                     "tool": "chat",
                     "response": raw_text
                 }
+                return fallback, total_usage
+
 
 
     except Exception as e:
         print(f"LLM Error: {e}")
-        return {"tool": "error", "response": "I couldn't process that request."}
+        return {"tool": "error", "response": "I couldn't process that request."}, {}
 
 
 
 def main():
     model = ModelManager()
-    pdf_path = os.getenv("KNOWLEDGE_PDF", "data/poliquin_picp_level_1.pdf")
+    pdf_path = os.getenv("KNOWLEDGE_PDF", "app/data/poliquin_picp_level_1.pdf")
     init_rag(pdf_path)
 
     print(f"--- AI Powerlifting Coach) ---")
@@ -154,10 +167,16 @@ def main():
             if user_input.lower() in ["exit", "quit"]:
                 break
 
-            # A. ROUTING (LLM Decision)
-            decision = ask_secure(model, user_input)
+            t0 = time.perf_counter()
 
+            # A. ROUTING (LLM Decision)
+            decision, usage = ask_secure(model, user_input)
+
+            duration = time.perf_counter() - t0
+            tokens = usage.get("total_tokens", 0)
             tool_name = decision.get("tool")
+            log_tool_execution("llm_planner", "SUCCESS", duration, "", tokens)
+
 
             # B. DISPATCHING (Execution)
             if tool_name in ALLOWED_TOOLS:
@@ -193,6 +212,8 @@ def main():
                     )
 
                     print(f"\nCoach: {final_resp['text']}\n")
+                    tokens = final_resp.get("usage", {}).get("total_tokens", 0)
+                    log_tool_execution("llm_response", "SUCCESS", final_resp["latency_s"], "", tokens)
 
                     hits = actual_result.get('hits', [])
                     if hits:
@@ -219,10 +240,8 @@ def main():
                     )
 
                     print(f"\nCoach: {final_resp['text']}\n")
-
-
-                # D. OBSERVABILITY
-                # TODO: Logs to csv or monitoring system can be added here
+                    tokens = final_resp.get("usage", {}).get("total_tokens", 0)
+                    log_tool_execution("llm_response", "SUCCESS", final_resp["latency_s"], "", tokens)
 
 
             elif tool_name == "chat":
