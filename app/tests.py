@@ -156,7 +156,7 @@ def print_metrics():
 
 if __name__ == "__main__":
     os.makedirs("logs", exist_ok=True)
-    init_rag("data/KNOWLEDGE_PDF")
+    init_rag(f"{os.getenv('KNOWLEDGE_PDF')}")
 
     df_guard = run_guardrail_tests()
     df_valid = run_validation_tests()
