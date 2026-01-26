@@ -12,8 +12,12 @@ from app.rag_loader import load_pdf, chunk_pages
 EMBEDDER_MODEL = 'all-MiniLM-L6-v2'
 CHUNK_SIZE = 600
 OVERLAP = 100
-INDEX_PATH = "data/faiss_index.bin"
-CHUNKS_PATH = "data/chunks.json"
+
+APP_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.abspath(os.path.join(APP_DIR, ".."))
+DATA_DIR = os.path.join(PROJECT_ROOT, "data")
+INDEX_PATH = os.path.join(DATA_DIR, "faiss_index.bin")
+CHUNKS_PATH = os.path.join(DATA_DIR, "chunks.json")
 
 embedder = SentenceTransformer(EMBEDDER_MODEL)
 dimension = 384
@@ -32,7 +36,7 @@ def build_knowledge_base(pdf_path: str, force_rebuild=False):
     global index, chunks_db, bm25
     if not force_rebuild and os.path.exists(CHUNKS_PATH) and os.path.exists(INDEX_PATH):
         # Load existing index and chunks
-        print("Loading existing knowledge base...")
+        print(" > [RAG] Loading existing knowledge base...")
         index = faiss.read_index(INDEX_PATH)
         with open(CHUNKS_PATH, 'r', encoding='utf-8') as f:
             chunks_db = json.load(f)
@@ -41,13 +45,13 @@ def build_knowledge_base(pdf_path: str, force_rebuild=False):
         return
 
     # Initialize FAISS index
-    print("Building knowledge base...")
+    print(" > [RAG] Building knowledge base...")
     # Load and chunk the PDF
     pages = load_pdf(pdf_path)
     chunks_db = chunk_pages(pages, chunk_size=CHUNK_SIZE, overlap=OVERLAP)
 
     # Save chunks to file
-    print("Creating embeddings...")
+    print(" > [RAG] Creating embeddings...")
     texts = [c["text"] for c in chunks_db]
     embeddings = embedder.encode(
         texts,
@@ -64,15 +68,15 @@ def build_knowledge_base(pdf_path: str, force_rebuild=False):
     # Build BM25 index
     bm25_corpus = [tokenize(text) for text in texts]
     bm25 = BM25Okapi(bm25_corpus)
-    print(f"BM25 index built with {len(bm25_corpus)} documents")
+    print(f" > [RAG] BM25 index built with {len(bm25_corpus)} documents")
 
     # Save index and chunks
-    os.makedirs("data", exist_ok=True)
+    os.makedirs("../data", exist_ok=True)
     faiss.write_index(index, INDEX_PATH)
     with open(CHUNKS_PATH, 'w', encoding='utf-8') as f:
         json.dump(chunks_db, f, ensure_ascii=False, indent=2)
 
-    print("Knowledge base built and saved.")
+    print(" > [RAG] Knowledge base built and saved.")
 
 
 def search_dense(query: str, top_k: int = 10) -> List[tuple]:
@@ -121,7 +125,7 @@ def search_knowledge(query: str, top_k: int = 3, use_hybrid: bool = True) -> Lis
     Hybrid search combining dense vectors and BM25
     """
     if index is None or not chunks_db:
-        print("Knowledge base not loaded.")
+        print(" > [RAG] Knowledge base not loaded.")
         return []
 
     # Encode query ONCE
@@ -191,7 +195,7 @@ def search_knowledge(query: str, top_k: int = 3, use_hybrid: bool = True) -> Lis
     return results
 
 
-def init_rag(pdf_path: str = "data/poliquin_picp_level_1.pdf", force_rebuild: bool = False):
+def init_rag(pdf_path: str, force_rebuild: bool = False):
     """Initializes the RAG system by building/loading the knowledge base."""
     global index, chunks_db, bm25
 
@@ -200,38 +204,27 @@ def init_rag(pdf_path: str = "data/poliquin_picp_level_1.pdf", force_rebuild: bo
         project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
         pdf_path = os.path.join(project_root, pdf_path)
 
-    print(f"Checking PDF:  {pdf_path}")
-    print(f"Exists: {os.path.exists(pdf_path)}")
+    print(f" > [RAG] Checking PDF:  {pdf_path}")
+    print(f" > [RAG] Exists: {os.path.exists(pdf_path)}")
 
     if os.path.exists(pdf_path):
-        print(f"PDF found, initializing...")
+        print(f" > [RAG] PDF found, initializing...")
         build_knowledge_base(pdf_path, force_rebuild=force_rebuild)
 
-        # === DEBUG INFO ===
-        print(f"\n{'=' * 60}")
-        print(f"POST-BUILD STATUS")
-        print(f"{'=' * 60}")
-        print(f"- index: {type(index).__name__ if index else 'None'}")
-        print(f"- index is None: {index is None}")
-        if index is not None:
-            print(f"- index.ntotal: {index.ntotal}")
-        print(f"- chunks_db: {type(chunks_db).__name__}")
-        print(f"- chunks_db length: {len(chunks_db)}")
-        print(f"- bm25: {'✓ Ready' if bm25 else '✗ Not initialized'}")
-        print(f"{'=' * 60}\n")
+
 
         if index is None:
-            raise RuntimeError("❌ FAISS index failed to load!")
+            raise RuntimeError(f" > [RAG] FAISS index failed to load!")
         if not chunks_db:
-            raise RuntimeError("❌ chunks_db is empty!")
+            raise RuntimeError(f" > [RAG] chunks_db is empty!")
         if bm25 is None:
-            raise RuntimeError("❌ BM25 index failed to initialize!")
+            raise RuntimeError(f" > [RAG] BM25 index failed to initialize!")
 
-        print(f"RAG system ready with {len(chunks_db)} chunks\n")
+        print(f" > [RAG] RAG system ready with {len(chunks_db)} chunks\n")
 
     else:
-        print(f"PDF not found:  {pdf_path}")
-        print("Using fallback knowledge base")
+        print(f" > [RAG] PDF not found:  {pdf_path}")
+        print(f" > [RAG] Using fallback knowledge base")
 
         # Fallback
         chunks_db = [
@@ -248,4 +241,4 @@ def init_rag(pdf_path: str = "data/poliquin_picp_level_1.pdf", force_rebuild: bo
         index.add(fallback_embs.astype('float32'))
         bm25_corpus = [tokenize(text) for text in fallback_texts]
         bm25 = BM25Okapi(bm25_corpus)
-        print(f"Fallback KB loaded with {len(chunks_db)} entries, {index.ntotal} vectors")
+        print(f" > [RAG] Fallback KB loaded with {len(chunks_db)} entries, {index.ntotal} vectors")

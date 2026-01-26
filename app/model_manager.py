@@ -18,7 +18,7 @@ class ModelManager:
         self.local_tokenizer = None
         self.local_device = None
 
-        print(f"ModelManager initialized in '{self.mode}' mode.")
+        print(f" > [ModelManager] initialized in '{self.mode}' mode.")
 
         if self.mode == "groq":
             self._init_groq()
@@ -33,12 +33,12 @@ class ModelManager:
             raise ValueError("GROQ_API_KEY not set")
         self.groq_model_name = os.getenv("GROQ_MODEL_NAME", "llama-3.3-70b-versatile")
         self.groq_client = Groq(api_key=api_key)
-        print(f"Initialized Groq client with model '{self.groq_model_name}'")
+        print(f" > [ModelManager] Initialized Groq client with model '{self.groq_model_name}'")
 
 
     def _init_local(self):
         self.local_model_name = os.getenv("LOCAL_MODEL_NAME", "Qwen/Qwen2.5-0.5B-Instruct")
-        print(f"Loading local model '{self.local_model_name}'...")
+        print(f" > [ModelManager] Loading local model '{self.local_model_name}'...")
 
         self.local_tokenizer = AutoTokenizer.from_pretrained(
             self.local_model_name,
@@ -60,8 +60,8 @@ class ModelManager:
         if device_map is None:
             self.local_model = self.local_model.to(self.local_device)
 
-        print(f"Local model loaded on device '{self.local_device}'")
-        print(f"Local model '{self.local_model_name}' is ready.")
+        print(f" > [ModelManager] Local model loaded on device '{self.local_device}'")
+        print(f" > [ModelManager] Local model '{self.local_model_name}' is ready.")
 
 
     def _build_prompt_local(self, messages: List[Dict[str, str]]) -> str:
@@ -215,7 +215,7 @@ class ModelManager:
             try:
                 self.groq_client.close()
             except Exception as e:
-                print(f"Error closing Groq client: {e}")
+                print(f" > [ERROR] closing Groq client: {e}")
 
         if self.local_model:
             del self.local_model

@@ -148,19 +148,17 @@ def ask_model(model: ModelManager, user_input: str):
 
 
     except Exception as e:
-        print(f"LLM Error: {e}")
+        print(f" > [ERROR] LLM Error: {e}")
         return {"tool": "error", "response": "I couldn't process that request."}, {}
 
 
 
 def main():
     model = ModelManager()
-    pdf_path = os.getenv("KNOWLEDGE_PDF", "app/data/poliquin_picp_level_1.pdf")
+    pdf_path = os.getenv("KNOWLEDGE_PDF")
     init_rag(pdf_path)
 
-    print(f"--- AI Powerlifting Coach) ---")
-    print("Type 'exit' to quit.\n")
-
+    init()
     try:
         while True:
             user_input = input("User: ")
@@ -180,7 +178,7 @@ def main():
 
             # B. DISPATCHING (Execution)
             if tool_name in ALLOWED_TOOLS:
-                print(f" > [DEBUG] Calling Tool: {tool_name} with {decision.get('args')}")
+                # print(f" > [DEBUG] Calling Tool: {tool_name} with {decision.get('args')}")
 
                 tool_result = run_tool(tool_name, decision.get("args"))
 
@@ -253,6 +251,20 @@ def main():
     finally:
         model.close()
         print("Session ended.")
+
+
+
+def init():
+    print(r"""
+             ██████╗ ██████╗  █████╗  ██████╗██╗  ██╗     █████╗ ██╗
+            ██╔════╝██╔═══██╗██╔══██╗██╔════╝██║  ██║    ██╔══██╗██║
+           ██║     ██║   ██║███████║██║     ███████║    ███████║██║
+          ██║     ██║   ██║██╔══██║██║     ██╔══██║    ██╔══██║██║
+         ╚██████╗╚██████╔╝██║  ██║╚██████╗██║  ██║    ██║  ██║██║
+          ╚═════╝ ╚═════╝ ╚═╝  ╚═╝ ╚═════╝╚═╝  ╚═╝    ╚═╝  ╚═╝╚═╝
+        """)
+
+    print("\nType 'exit' to quit.\n")
 
 if __name__ == "__main__":
     main()

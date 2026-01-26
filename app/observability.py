@@ -4,11 +4,13 @@ from datetime import datetime
 from collections import Counter
 from typing import Dict, Any
 
-LOG_FILE = "tool_logs.csv"
+LOG_DIR = "logs"
+LOG_FILE = os.path.join(LOG_DIR, "tool_logs.csv")
 FIELDNAMES = ["timestamp", "tool_name", "status", "duration_s", "error_type", "tokens"]
 
 
 def log_tool_execution(tool_name: str, status: str, duration: float, error_type: str = "", tokens: int = 0):
+    os.makedirs(LOG_DIR, exist_ok=True)
     file_exists = os.path.exists(LOG_FILE)
 
     try:

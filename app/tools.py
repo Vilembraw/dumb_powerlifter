@@ -153,7 +153,9 @@ def _calculate_1rm(args: Calc1RMArgs, cancel_event: Optional[threading. Event] =
 
 def _log_workout(args: LogWorkoutArgs, cancel_event: Optional[threading. Event] = None) -> Dict[str, Any]:
     """Logs the workout to CSV."""
-    filename = "user_progress.csv"
+    log_dir = "logs"
+    os.makedirs(log_dir, exist_ok=True)
+    filename = os.path.join(log_dir, "user_progress.csv")
     saved_entries = []
 
     file_exists = os.path.exists(filename)

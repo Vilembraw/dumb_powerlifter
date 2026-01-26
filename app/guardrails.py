@@ -22,8 +22,7 @@ INJECTION_PATTERNS = [
     r"verbatim",
 
     # 3. Persona / Role-Playing (The "Grandmother" attack)
-    r"(act|pretend|behave|roleplay|play the role) as (a |an |my )?(system|developer|admin|grandmother|grandma|linux|terminal|console|teacher|tutor)",
-    r"you are now (in )?(developer|admin|god|debug|jailbreak) mode",
+    r"(act|pretend|behave|roleplay|play the role).{0,20}\b(as|like|to be|you are|you're)\b.{0,20}\b(system|developer|admin|grandmother|grandma|linux|terminal|console|teacher|tutor)",    r"you are now (in )?(developer|admin|god|debug|jailbreak) mode",
     r"play the role of",
     r"(imagine|suppose) you('re| are) (a |my )?(grandmother|grandma)",
     r"bedtime stor(y|ies).{0,50}(system|prompt|instruction|tool|configuration)",
@@ -111,6 +110,6 @@ def check_guardrails(user_input: str) -> Tuple[bool, str, Dict[str, any]]:
 
     # Flag PII but don't block (just warn)
     if any(flags["pii"].values()):
-        print(f"WARNING: PII detected in input: {flags['pii']}")
+        print(f" > [WARNING]: PII detected in input: {flags['pii']}")
 
     return False, "OK", flags
