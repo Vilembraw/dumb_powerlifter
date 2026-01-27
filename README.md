@@ -35,7 +35,7 @@ Możesz uruchomić system w dwóch trybach:
 **A. Tryb API (Serwer REST):**
 
 ```bash
-python app/api.py
+python -m app.api
 ```
 * API dostępne pod adresem: `http://127.0.0.1:8000`
 * Dokumentacja (Swagger UI): `http://127.0.0.1:8000/docs`
@@ -43,7 +43,7 @@ python app/api.py
 **B. Tryb CLI (Konsola):**
 
 ```bash
-python app/main.py
+python -m app.main
 ```
 
 ## 2. Architektura Systemu i Opis Działania
@@ -123,7 +123,7 @@ Projekt zawiera automatyczny moduł testowy weryfikujący stabilność i bezpiec
 Aby uruchomić pełną procedurę testową, wpisz w terminalu:
 
 ```bash
-python app/tests.py
+python -m app.tests
 ```
 
 
