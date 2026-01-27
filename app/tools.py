@@ -54,7 +54,7 @@ def _kb_lookup(args: KBLookupArgs, cancel_event: Optional[threading. Event] = No
         print("No hits returned from search_knowledge()")
 
 
-    RELEVANCE_THRESHOLD = 0.67
+    RELEVANCE_THRESHOLD = 0.60
 
     if not hits or hits[0].get("score", 0) < RELEVANCE_THRESHOLD:
         return {
