@@ -3,8 +3,6 @@
 *.iml
 
 
-*.csv
-data/
 data/
 
 # Byte-compiled / optimized / DLL files

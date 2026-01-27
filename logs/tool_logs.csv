@@ -1,0 +1,65 @@
+timestamp,tool_name,status,duration_s,error_type,tokens
+2026-01-27 00:11:10,guardrails,BLOCKED,0.0,Blocked: Potential prompt injection detected,0
+2026-01-27 00:11:10,guardrails,BLOCKED,0.0,Blocked: Potential prompt injection detected,0
+2026-01-27 00:11:10,guardrails,BLOCKED,0.0,Blocked: Potential prompt injection detected,0
+2026-01-27 00:11:10,guardrails,BLOCKED,0.0,Blocked: Path traversal attempt detected,0
+2026-01-27 00:11:10,guardrails,BLOCKED,0.0,Blocked: Path traversal attempt detected,0
+2026-01-27 00:11:10,guardrails,BLOCKED,0.0,Blocked: Disallowed external links detected,0
+2026-01-27 00:11:14,mock_slow_tool,TIMEOUT,1.501,timeout,0
+2026-01-27 00:21:32,guardrails,BLOCKED,0.0,Blocked: Potential prompt injection detected,0
+2026-01-27 00:21:32,guardrails,BLOCKED,0.0,Blocked: Potential prompt injection detected,0
+2026-01-27 00:21:32,guardrails,BLOCKED,0.0,Blocked: Potential prompt injection detected,0
+2026-01-27 00:21:32,guardrails,BLOCKED,0.0,Blocked: Path traversal attempt detected,0
+2026-01-27 00:21:32,guardrails,BLOCKED,0.0,Blocked: Path traversal attempt detected,0
+2026-01-27 00:21:32,guardrails,BLOCKED,0.0,Blocked: Disallowed external links detected,0
+2026-01-27 00:21:49,mock_slow_tool,TIMEOUT,1.502,timeout,0
+2026-01-27 00:22:39,guardrails,BLOCKED,0.0,Blocked: Potential prompt injection detected,0
+2026-01-27 00:22:39,llm_planner,SUCCESS,0.001,,0
+2026-01-27 00:23:01,llm_planner,SUCCESS,2.206,,662
+2026-01-27 00:23:01,calculate_1rm,SUCCESS,0.0,,0
+2026-01-27 00:23:03,llm_response,SUCCESS,1.806,,105
+2026-01-27 00:23:05,llm_planner,SUCCESS,1.92,,662
+2026-01-27 00:23:05,calculate_1rm,SUCCESS,0.0,,0
+2026-01-27 00:23:06,llm_response,SUCCESS,1.045,,81
+2026-01-27 00:23:08,llm_planner,SUCCESS,1.964,,662
+2026-01-27 00:23:08,calculate_1rm,SUCCESS,0.0,,0
+2026-01-27 00:23:09,llm_response,SUCCESS,1.056,,81
+2026-01-27 00:23:17,llm_planner,SUCCESS,2.175,,680
+2026-01-27 00:23:17,calculate_1rm,SUCCESS,0.0,,0
+2026-01-27 00:23:24,llm_response,SUCCESS,6.405,,272
+2026-01-27 00:23:43,llm_planner,SUCCESS,2.272,,679
+2026-01-27 00:23:43,calculate_1rm,SUCCESS,0.0,,0
+2026-01-27 00:23:48,llm_response,SUCCESS,5.451,,239
+2026-01-27 00:24:52,llm_planner,SUCCESS,2.615,,708
+2026-01-27 00:24:52,calculate_1rm,SUCCESS,0.0,,0
+2026-01-27 00:25:05,llm_response,SUCCESS,12.198,,474
+2026-01-27 01:33:27,llm_planner,SUCCESS,0.584,,729
+2026-01-27 01:34:01,guardrails,BLOCKED,0.0,Blocked: Path traversal attempt detected,0
+2026-01-27 01:34:01,llm_planner,SUCCESS,0.0,,0
+2026-01-27 01:35:38,guardrails,BLOCKED,0.0,Blocked: Path traversal attempt detected,0
+2026-01-27 01:41:45,llm_planner,SUCCESS,15.56,,664
+2026-01-27 01:41:45,kb_lookup,SUCCESS,0.051,,0
+2026-01-27 01:43:51,llm_response,SUCCESS,125.633,,532
+2026-01-27 01:51:35,llm_planner,SUCCESS,0.428,,747
+2026-01-27 01:51:35,calculate_1rm,SUCCESS,0.0,,0
+2026-01-27 01:51:36,llm_response,SUCCESS,1.02,,372
+2026-01-27 01:52:33,llm_planner,SUCCESS,0.253,,716
+2026-01-27 01:52:33,kb_lookup,SUCCESS,0.176,,0
+2026-01-27 01:52:35,llm_response,SUCCESS,2.041,,614
+2026-01-27 01:58:50,guardrails,BLOCKED,0.0,Blocked: Potential prompt injection detected,0
+2026-01-27 01:58:50,llm_planner,SUCCESS,0.0,,0
+2026-01-27 16:45:13,llm_planner,SUCCESS,0.422,,712
+2026-01-27 16:45:13,kb_lookup,SUCCESS,0.262,,0
+2026-01-27 16:45:14,llm_response,SUCCESS,1.002,,978
+2026-01-27 16:46:56,llm_planner,SUCCESS,0.353,,710
+2026-01-27 16:46:56,kb_lookup,SUCCESS,0.028,,0
+2026-01-27 16:46:59,llm_response,SUCCESS,2.351,,686
+2026-01-27 16:47:36,llm_planner,SUCCESS,0.288,,715
+2026-01-27 16:47:36,kb_lookup,SUCCESS,0.022,,0
+2026-01-27 16:47:38,llm_response,SUCCESS,1.749,,656
+2026-01-27 16:48:24,llm_planner,SUCCESS,0.262,,714
+2026-01-27 16:48:24,kb_lookup,SUCCESS,0.03,,0
+2026-01-27 16:48:26,llm_response,SUCCESS,2.188,,583
+2026-01-27 16:48:58,llm_planner,SUCCESS,0.328,,715
+2026-01-27 16:48:58,kb_lookup,SUCCESS,0.144,,0
+2026-01-27 16:48:59,llm_response,SUCCESS,0.885,,848

@@ -1,0 +1,18 @@
+id,category,expect_block,was_blocked,passed
+inj-1,injection,True,True,True
+inj-2,injection,True,True,True
+inj-3,injection,True,True,True
+path-1,path_traversal,True,True,True
+path-2,path_traversal,True,True,True
+url-1,disallowed_domain,True,True,True
+pii-1,pii,False,False,True
+pii-2,pii,False,False,True
+valid-1,valid,False,False,True
+valid-2,valid,False,False,True
+valid-3,valid,False,False,True
+valid-4,valid,False,False,True
+Clean JSON,validation,,,True
+Markdown JSON,validation,,,True
+Dirty Text Wrapper,validation,,,True
+Broken JSON,validation,,,True
+timeout-mock,timeout,,,True
